@@ -1,0 +1,114 @@
+package server
+
+import (
+	"context"
+	"ledger/internal/application/account"
+	"ledger/internal/application/entry"
+	"ledger/internal/application/transfer"
+
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
+
+func (s *Server) health(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ok",
+	})
+}
+
+// CreateAccount creates a new account
+func (s *Server) CreateAccount(c *gin.Context) {
+	var req account.CreateAccountRequest
+	ctx := context.Background()
+
+	if err := c.BindJSON(&req); err != nil {
+		s.logger.Error("failed to bind request", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	detail, err := s.accountApp.CreateAccount(ctx, req)
+	if err != nil {
+		s.logger.Error("failed to create account", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id": detail.ID,
+	})
+}
+
+// GetByID retrieves an account by its ID
+func (s *Server) GetByID(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		s.logger.Error("id is required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+		return
+	}
+
+	detail, err := s.accountApp.GetByID(context.Background(), account.GetByIDRequest{
+		ID: id,
+	})
+	if err != nil {
+		s.logger.Error("failed to get account", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"result": detail,
+	})
+}
+
+// Transfer transfers funds between accounts
+func (s *Server) Transfer(c *gin.Context) {
+	var req transfer.TransferRequest
+	ctx := context.Background()
+
+	if err := c.BindJSON(&req); err != nil {
+		s.logger.Error("failed to bind request", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := s.transferApp.Transfer(ctx, req); err != nil {
+		s.logger.Error("failed to transfer", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "transfer successful"})
+}
+
+// GetEntries retrieves a list of entries
+func (s *Server) GetHistoryEntries(c *gin.Context) {
+	var req *entry.GetHistoryListRequest
+
+	accountId := c.Param("account_id")
+	if accountId == "" {
+		s.logger.Error("account_id is required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "account_id is required"})
+		return
+	}
+
+	req = &entry.GetHistoryListRequest{
+		AccountID: accountId,
+	}
+	entries, count, err := s.entryApp.GetHistoryList(context.Background(), req)
+
+	if err != nil {
+		s.logger.Error("failed to get entries", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"results": gin.H{
+			"data":  entries,
+			"count": count,
+		},
+	})
+}

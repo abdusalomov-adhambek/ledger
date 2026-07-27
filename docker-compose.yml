@@ -1,0 +1,29 @@
+services:
+
+  postgres:
+
+    image: postgres:17
+
+    container_name: ledger-db
+
+    restart: always
+
+    ports:
+
+      - "5432:5432"
+
+    environment:
+
+      POSTGRES_DB: ledger
+
+      POSTGRES_USER: postgres
+
+      POSTGRES_PASSWORD: postgres
+
+    volumes:
+
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+
+  postgres_data:
