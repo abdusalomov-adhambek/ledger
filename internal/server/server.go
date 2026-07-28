@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"ledger/internal/application/account"
 	"ledger/internal/application/entry"
+	"ledger/internal/application/transaction"
 	"ledger/internal/application/transfer"
 	"ledger/internal/config"
 	"log/slog"
@@ -18,9 +19,10 @@ type Server struct {
 	logger *slog.Logger
 	db     *pgxpool.Pool
 
-	accountApp  *account.AccountApplication
-	transferApp *transfer.TransferApp
-	entryApp    *entry.EntryApplication
+	accountApp     *account.AccountApplication
+	transferApp    *transfer.TransferApp
+	entryApp       *entry.EntryApplication
+	transactionApp *transaction.TransactionApplication
 }
 
 func New(
@@ -30,15 +32,17 @@ func New(
 	accountApp *account.AccountApplication,
 	transferApp *transfer.TransferApp,
 	entryApp *entry.EntryApplication,
+	transactionApp *transaction.TransactionApplication,
 ) *Server {
 	s := &Server{
-		router:      gin.New(),
-		cfg:         cfg,
-		logger:      logger,
-		db:          db,
-		accountApp:  accountApp,
-		transferApp: transferApp,
-		entryApp:    entryApp,
+		router:         gin.New(),
+		cfg:            cfg,
+		logger:         logger,
+		db:             db,
+		accountApp:     accountApp,
+		transferApp:    transferApp,
+		entryApp:       entryApp,
+		transactionApp: transactionApp,
 	}
 	s.registerRoutes()
 	return s
@@ -56,6 +60,9 @@ func (s *Server) registerRoutes() {
 
 	// ------------------- entry -------------------
 	s.router.GET("/entry/:account_id/history", s.GetHistoryEntries)
+
+	// ------------------- transaction -------------------
+	s.router.PUT("/transaction/:id/reverse", s.ReverseTransaction)
 }
 
 func (s *Server) Run() error {

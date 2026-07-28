@@ -4,6 +4,7 @@ import (
 	"context"
 	"ledger/internal/application/account"
 	"ledger/internal/application/entry"
+	"ledger/internal/application/transaction"
 	"ledger/internal/application/transfer"
 
 	"net/http"
@@ -35,6 +36,7 @@ func (s *Server) CreateAccount(c *gin.Context) {
 		return
 	}
 
+	s.logger.Info("account created", "id", detail.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"id": detail.ID,
 	})
@@ -58,6 +60,7 @@ func (s *Server) GetByID(c *gin.Context) {
 		return
 	}
 
+	s.logger.Info("account retrieved", "id", id)
 	c.JSON(http.StatusOK, gin.H{
 		"result": detail,
 	})
@@ -80,6 +83,7 @@ func (s *Server) Transfer(c *gin.Context) {
 		return
 	}
 
+	s.logger.Info("transfer successful")
 	c.JSON(http.StatusOK, gin.H{"message": "transfer successful"})
 }
 
@@ -105,10 +109,37 @@ func (s *Server) GetHistoryEntries(c *gin.Context) {
 		return
 	}
 
+	s.logger.Info("entries retrieved", "count", count)
 	c.JSON(http.StatusOK, gin.H{
 		"results": gin.H{
 			"data":  entries,
 			"count": count,
 		},
 	})
+}
+
+func (s *Server) ReverseTransaction(c *gin.Context) {
+	s.logger.Info("server.ReverseTransaction", "transaction_id", c.Param("id"))
+	var req *transaction.ReverseTransactionRequest
+	ctx := context.Background()
+
+	transactionId := c.Param("id")
+	if transactionId == "" {
+		s.logger.Error("transaction id is required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "transaction id is required"})
+		return
+	}
+
+	req = &transaction.ReverseTransactionRequest{
+		TransactionID: transactionId,
+	}
+
+	if err := s.transactionApp.ReverseTransaction(ctx, req); err != nil {
+		s.logger.Error("failed to reverse transaction", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	s.logger.Info("transaction reversed", "routes.ReverseTransaction", transactionId)
+	c.JSON(http.StatusOK, gin.H{"message": "transaction reversed"})
 }

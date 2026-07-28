@@ -1,6 +1,9 @@
 package entry
 
-import "ledger/internal/domain/transaction"
+import (
+	"ledger/internal/domain/account"
+	"ledger/internal/domain/transaction"
+)
 
 type Entry struct {
 	id            string
@@ -11,6 +14,7 @@ type Entry struct {
 	createdAt     string
 
 	transaction *transaction.Transaction
+	account     *account.Account
 }
 
 const (
@@ -57,4 +61,12 @@ func (e *Entry) Transaction() *transaction.Transaction {
 
 func (e *Entry) SetTransaction(transaction *transaction.Transaction) {
 	e.transaction = transaction
+}
+
+func (e *Entry) Account() *account.Account {
+	return e.account
+}
+
+func (e *Entry) SetAccount(account *account.Account) {
+	e.account = account
 }

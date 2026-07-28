@@ -2,6 +2,7 @@ package entry
 
 import (
 	"context"
+	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
 	"ledger/internal/domain/transaction"
 	"log"
@@ -76,4 +77,41 @@ func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter) ([]*entry
 		return nil, 0, err
 	}
 	return data, count, nil
+}
+
+func (r *EntryRepo) GetEntriesByTransactionID(ctx context.Context, transactionId string) ([]*entry.Entry, error) {
+	query := `
+		SELECT e.id, e.transaction_id, e.type, e.amount, e.account_id, a.balance, a.status
+		FROM entries e
+		INNER JOIN transactions t ON e.transaction_id = t.id
+		INNER JOIN accounts a ON e.account_id = a.id
+		WHERE e.transaction_id = $1
+	`
+	rows, err := r.pgx.Query(ctx, query, &transactionId)
+	if err != nil {
+		return nil, err
+	}
+
+	var data []*entry.Entry
+	for rows.Next() {
+		var (
+			id,
+			entryType string
+			amount    int64
+			accountId string
+			balance   int64
+			status    string
+		)
+
+		if err := rows.Scan(&id, &transactionId, &entryType, &amount, &accountId, &balance, &status); err != nil {
+			return nil, err
+		}
+
+		newEntry := entry.NewEntry(id, transactionId, accountId, entryType, amount)
+		newAccount := account.NewAccount(accountId, "", "", balance, status)
+		newEntry.SetAccount(newAccount)
+		data = append(data, newEntry)
+	}
+
+	return data, nil
 }

@@ -73,7 +73,7 @@ func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) error {
 			return err
 		}
 
-		// 6. Transaction yaratish
+		// 6. Create transaction
 		reference := uuid.NewString()
 		tr := transaction.NewTransaction(
 			"",
@@ -115,12 +115,12 @@ func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) error {
 		}
 
 		// Update account balances
-		if err := t.accountRepo.Update(ctx, from, tx); err != nil {
+		if err := t.accountRepo.UpdateBalance(ctx, from, tx); err != nil {
 			t.logger.Error("failed to update from account balance", "error", err)
 			return err
 		}
 
-		if err := t.accountRepo.Update(ctx, to, tx); err != nil {
+		if err := t.accountRepo.UpdateBalance(ctx, to, tx); err != nil {
 			t.logger.Error("failed to update to account balance", "error", err)
 			return err
 		}

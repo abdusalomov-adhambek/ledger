@@ -115,7 +115,7 @@ func (ar *AccountRepo) GetForUpdate(ctx context.Context, tx pgx.Tx, id string) (
 	return newAcc, nil
 }
 
-func (ar *AccountRepo) Update(ctx context.Context, account *account.Account, tx pgx.Tx) error {
+func (ar *AccountRepo) UpdateBalance(ctx context.Context, account *account.Account, tx pgx.Tx) error {
 	query := `
 		UPDATE accounts
 		SET balance = $1

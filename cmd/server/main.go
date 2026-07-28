@@ -12,6 +12,7 @@ import (
 
 	accountapplication "ledger/internal/application/account"
 	entryapplication "ledger/internal/application/entry"
+	transactionapplication "ledger/internal/application/transaction"
 	transferapplication "ledger/internal/application/transfer"
 )
 
@@ -42,9 +43,10 @@ func main() {
 	accountApp := accountapplication.NewAccountApplication(accountRepo, logger)
 	transferApp := transferapplication.NewTransferApplication(logger, txManager, accountRepo, transactionRepo, entryRepo)
 	entryApp := entryapplication.NewEntryApplication(logger, entryRepo)
+	transactionApp := transactionapplication.NewTransactionApplication(logger, transactionRepo, entryRepo, txManager, accountRepo)
 
 	// server
-	srv := server.New(cfg, logger, pgx, accountApp, transferApp, entryApp)
+	srv := server.New(cfg, logger, pgx, accountApp, transferApp, entryApp, transactionApp)
 	if err := srv.Run(); err != nil {
 		logger.Error("failed to run server", "error", err)
 		log.Fatal(err)

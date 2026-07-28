@@ -40,3 +40,31 @@ func (t *TransactionRepo) Create(ctx context.Context, tx pgx.Tx, tr *transaction
 
 	return nil
 }
+
+func (t *TransactionRepo) Reverse(ctx context.Context, transactionId string, tx pgx.Tx) error {
+	query := `
+		UPDATE transactions
+		SET status = 'REVERSED'
+		WHERE id = $1 AND status = 'COMPLETED'
+	`
+
+	if _, err := tx.Exec(ctx, query, transactionId); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *TransactionRepo) UpdateReversalOf(ctx context.Context, newTransaction *transaction.Transaction, transactionId string, tx pgx.Tx) error {
+	query := `
+		UPDATE transactions
+		SET reversal_of = $1
+		WHERE id = $2
+	`
+
+	if _, err := tx.Exec(ctx, query, transactionId, newTransaction.ID()); err != nil {
+		return err
+	}
+
+	return nil
+}
