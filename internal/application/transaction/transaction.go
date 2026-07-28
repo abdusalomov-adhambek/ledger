@@ -6,6 +6,7 @@ import (
 	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
 	"ledger/internal/domain/transaction"
+	"log"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
@@ -39,11 +40,17 @@ func (t *TransactionApplication) ReverseTransaction(ctx context.Context, req *Re
 		return err
 	}
 
+	// check if entries are found
+	if len(entries) == 0 {
+		return transaction.ErrNoEntriesFound
+	}
+
 	return t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
 
 		// get entries and accounts
 		fromAccount := &account.Account{}
 		toAccount := &account.Account{}
+		log.Println("entry.entry", entries[0])
 		for _, entry := range entries {
 			switch entry.EntryType() {
 			case "DEBIT":

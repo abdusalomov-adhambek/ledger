@@ -35,6 +35,8 @@ func (a *EntryApplication) GetHistoryList(ctx context.Context, req *GetHistoryLi
 			TransactionID: entry.TransactionID(),
 			Amount:        entry.Amount(),
 			Description:   entry.Transaction().Description(),
+			Status:        entry.Transaction().Status(),
+			EntryType:     entry.EntryType(),
 		}
 		data = append(data, detail)
 	}

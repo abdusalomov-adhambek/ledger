@@ -9,4 +9,6 @@ type GetListResponse struct {
 	TransactionID string `json:"transaction_id"`
 	Amount        int64  `json:"amount"`
 	Description   string `json:"description"`
+	Status        string `json:"status"`
+	EntryType     string `json:"entry_type"`
 }

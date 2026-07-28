@@ -35,7 +35,7 @@ func (r *EntryRepo) Create(ctx context.Context, tx pgx.Tx, entry *entry.Entry) e
 
 func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter) ([]*entry.Entry, int64, error) {
 	query := `
-		SELECT e.id, e.transaction_id, e.type, e.amount, t.description
+		SELECT e.id, e.transaction_id, e.type, e.amount, t.description, t.status
 		FROM entries e
 		INNER JOIN transactions t ON e.transaction_id = t.id
 		WHERE e.account_id = $1
@@ -55,14 +55,15 @@ func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter) ([]*entry
 			entryType,
 			description string
 			amount int64
+			status string
 		)
 
-		if err := rows.Scan(&id, &transactionId, &entryType, &amount, &description); err != nil {
+		if err := rows.Scan(&id, &transactionId, &entryType, &amount, &description, &status); err != nil {
 			return nil, 0, err
 		}
 
 		newEntry := entry.NewEntry(id, transactionId, "", entryType, amount)
-		newTransaction := transaction.NewTransaction("", "", "", description, nil)
+		newTransaction := transaction.NewTransaction("", "", status, description, nil)
 		newEntry.SetTransaction(newTransaction)
 		data = append(data, newEntry)
 	}
@@ -80,6 +81,7 @@ func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter) ([]*entry
 }
 
 func (r *EntryRepo) GetEntriesByTransactionID(ctx context.Context, transactionId string) ([]*entry.Entry, error) {
+	log.Println("transactionId", transactionId)
 	query := `
 		SELECT e.id, e.transaction_id, e.type, e.amount, e.account_id, a.balance, a.status
 		FROM entries e
