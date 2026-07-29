@@ -49,23 +49,9 @@ func New(
 }
 
 func (s *Server) registerRoutes() {
-	s.router.GET("/", s.health)
 
-	// ------------------- account -------------------
-	s.router.POST("/account", s.CreateAccount)
-	s.router.GET("/account/:id", s.GetByID)
-
-	// ------------------- transfer -------------------
-	s.router.POST("/transfer", s.Transfer)
-
-	// ------------------- entry -------------------
-	s.router.GET("/entry/:account_id/history", s.GetHistoryEntries)
-
-	// ------------------- transaction -------------------
-	s.router.PUT("/transaction/:id/reverse", s.ReverseTransaction)
 }
 
 func (s *Server) Run() error {
-	s.logger.Info("server is running", "port", s.cfg.Port)
 	return s.router.Run(fmt.Sprintf(":%d", s.cfg.Port))
 }
