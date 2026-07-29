@@ -45,8 +45,10 @@ make run
 
 ## API
 
-POST /accounts
-GET /accounts/:id
-POST /transfer
-GET /accounts/:id/history
-POST /transactions/:id/reverse
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/accounts` | Create account |
+| GET | `/accounts/:id` | Get account by ID |
+| POST | `/transfer` | Transfer money |
+| GET | `/accounts/:id/history` | Get transaction history |
+| POST | `/transactions/:id/reverse` | Reverse transaction |
