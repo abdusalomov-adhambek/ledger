@@ -2,10 +2,12 @@ package transfer
 
 import (
 	"context"
+	"encoding/json"
 	"ledger/internal/db"
 	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
 	"ledger/internal/domain/idempotency"
+	"ledger/internal/domain/outbox_events"
 	"ledger/internal/domain/transaction"
 	"ledger/internal/domain/transfer"
 	"log/slog"
@@ -22,6 +24,7 @@ type TransferApp struct {
 	transactionRepo transaction.Repository
 	entryRepo       entry.Repository
 	idempotencyRepo idempotency.Repository
+	outboxEventRepo outbox_events.Repository
 }
 
 func NewTransferApplication(
@@ -31,6 +34,7 @@ func NewTransferApplication(
 	transactionRepo transaction.Repository,
 	entryRepo entry.Repository,
 	idempotencyRepo idempotency.Repository,
+	outboxEventRepo outbox_events.Repository,
 ) *TransferApp {
 	return &TransferApp{
 		logger:          logger,
@@ -39,6 +43,7 @@ func NewTransferApplication(
 		transactionRepo: transactionRepo,
 		entryRepo:       entryRepo,
 		idempotencyRepo: idempotencyRepo,
+		outboxEventRepo: outboxEventRepo,
 	}
 }
 
@@ -146,6 +151,28 @@ func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) (string
 
 		if err := t.accountRepo.UpdateBalance(ctx, to, tx); err != nil {
 			t.logger.Error("failed to update to account balance", "error", err)
+			return err
+		}
+
+		// 9. Create outbox event
+		payloadMarshal, err := json.Marshal(
+			map[string]any{
+				"transaction_id":  transactionID,
+				"from_account_id": req.FromAccountID,
+				"to_account_id":   req.ToAccountID,
+				"amount":          req.Amount,
+				"currency":        from.Currency(),
+				"description":     req.Description,
+			},
+		)
+		if err != nil {
+			t.logger.Error("failed to marshal payload", "error", err)
+			return err
+		}
+		outboxEvent := outbox_events.NewOutboxEvent("", outbox_events.EventTransferCompleted, transactionID, payloadMarshal, outbox_events.StatusPending)
+
+		if err := t.outboxEventRepo.Create(ctx, tx, outboxEvent); err != nil {
+			t.logger.Error("failed to create outbox event", "error", err)
 			return err
 		}
 
