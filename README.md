@@ -22,6 +22,9 @@ A simple double-entry ledger service written in Go.
                 HTTP API (Gin)
                       │
                       ▼
+                Handler Layer
+                      │
+                      ▼
                 Application Layer
                       │
                       ▼
