@@ -184,20 +184,3 @@ make migrate-status
 ## License
 
 MIT
-
-
-                 Client
-                    │
-                    ▼
-              Gin HTTP Server
-                    │
-                    ▼
-            Application Layer
-                    │
-        ┌───────────┴───────────┐
-        ▼                       ▼
- Account Repository      Outbox Repository
-        │                       │
-        └───────────┬───────────┘
-                    ▼
-               PostgreSQL
