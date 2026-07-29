@@ -45,8 +45,8 @@ make run
 
 ## API
 
-POST /accounts
-GET /accounts/:id
-POST /transfer
-GET /accounts/:id/history
+POST /accounts, 
+GET /accounts/:id, 
+POST /transfer, 
+GET /accounts/:id/history, 
 POST /transactions/:id/reverse
