@@ -2,6 +2,22 @@
 
 A simple double-entry ledger service written in Go.
 
+                 Client
+                    │
+                    ▼
+              Gin HTTP Server
+                    │
+                    ▼
+            Application Layer
+                    │
+        ┌───────────┴───────────┐
+        ▼                       ▼
+ Account Repository      Outbox Repository
+        │                       │
+        └───────────┬───────────┘
+                    ▼
+               PostgreSQL
+
 ## Features
 
 - Open account
