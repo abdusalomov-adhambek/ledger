@@ -6,6 +6,9 @@ import (
 	"ledger/internal/application/entry"
 	"ledger/internal/application/transaction"
 	"ledger/internal/application/transfer"
+	"strconv"
+
+	entrydomain "ledger/internal/domain/entry"
 
 	"net/http"
 
@@ -77,19 +80,29 @@ func (s *Server) Transfer(c *gin.Context) {
 		return
 	}
 
-	if err := s.transferApp.Transfer(ctx, req); err != nil {
+	idempotencyKey := c.GetHeader("Idempotency-Key")
+	if idempotencyKey == "" {
+		s.logger.Info("idempotency key is required")
+		c.JSON(http.StatusOK, gin.H{"message": "idempotency key is required"})
+		return
+	}
+	req.IdempotencyKey = idempotencyKey
+
+	transactionId, err := s.transferApp.Transfer(ctx, req)
+	if err != nil {
 		s.logger.Error("failed to transfer", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	s.logger.Info("transfer successful")
-	c.JSON(http.StatusOK, gin.H{"message": "transfer successful"})
+	c.JSON(http.StatusOK, gin.H{"message": "transfer successful", "id": transactionId})
 }
 
 // GetEntries retrieves a list of entries
 func (s *Server) GetHistoryEntries(c *gin.Context) {
-	var req *entry.GetHistoryListRequest
+	req := &entry.GetHistoryListRequest{}
+	filter := &entrydomain.Filter{}
 
 	accountId := c.Param("account_id")
 	if accountId == "" {
@@ -97,11 +110,27 @@ func (s *Server) GetHistoryEntries(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "account_id is required"})
 		return
 	}
+	req.AccountID = accountId
 
-	req = &entry.GetHistoryListRequest{
-		AccountID: accountId,
+	if limit := c.Query("limit"); limit != "" {
+		l, err := strconv.ParseInt(limit, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+			return
+		}
+		filter.Limit = &l
 	}
-	entries, count, err := s.entryApp.GetHistoryList(context.Background(), req)
+
+	if offset := c.Query("offset"); offset != "" {
+		o, err := strconv.ParseInt(offset, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid offset"})
+			return
+		}
+		filter.Offset = &o
+	}
+
+	entries, count, err := s.entryApp.GetHistoryList(context.Background(), filter, req)
 
 	if err != nil {
 		s.logger.Error("failed to get entries", "error", err)
@@ -118,6 +147,7 @@ func (s *Server) GetHistoryEntries(c *gin.Context) {
 	})
 }
 
+// ReverseTransaction reverses a transaction by its ID
 func (s *Server) ReverseTransaction(c *gin.Context) {
 	s.logger.Info("server.ReverseTransaction", "transaction_id", c.Param("id"))
 	var req *transaction.ReverseTransactionRequest

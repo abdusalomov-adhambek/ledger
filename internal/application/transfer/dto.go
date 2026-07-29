@@ -1,8 +1,9 @@
 package transfer
 
 type TransferRequest struct {
-	FromAccountID string `json:"from_account_id"`
-	ToAccountID   string `json:"to_account_id"`
-	Amount        int64  `json:"amount"`
-	Description   string `json:"description"`
+	FromAccountID  string `json:"from_account_id"`
+	ToAccountID    string `json:"to_account_id"`
+	Amount         int64  `json:"amount"`
+	Description    string `json:"description"`
+	IdempotencyKey string `json:"-"`
 }

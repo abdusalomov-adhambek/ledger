@@ -3,6 +3,7 @@ package entry
 import (
 	"ledger/internal/domain/account"
 	"ledger/internal/domain/transaction"
+	"time"
 )
 
 type Entry struct {
@@ -11,7 +12,7 @@ type Entry struct {
 	accountId     string
 	entryType     string
 	amount        int64
-	createdAt     string
+	createdAt     time.Time
 
 	transaction *transaction.Transaction
 	account     *account.Account
@@ -51,7 +52,7 @@ func (e *Entry) Amount() int64 {
 	return e.amount
 }
 
-func (e *Entry) CreatedAt() string {
+func (e *Entry) CreatedAt() time.Time {
 	return e.createdAt
 }
 
@@ -69,4 +70,8 @@ func (e *Entry) Account() *account.Account {
 
 func (e *Entry) SetAccount(account *account.Account) {
 	e.account = account
+}
+
+func (e *Entry) SetCreatedAt(createdAt time.Time) {
+	e.createdAt = createdAt
 }

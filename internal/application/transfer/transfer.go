@@ -5,6 +5,7 @@ import (
 	"ledger/internal/db"
 	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
+	"ledger/internal/domain/idempotency"
 	"ledger/internal/domain/transaction"
 	"ledger/internal/domain/transfer"
 	"log/slog"
@@ -20,28 +21,43 @@ type TransferApp struct {
 	accountRepo     account.Repository
 	transactionRepo transaction.Repository
 	entryRepo       entry.Repository
+	idempotencyRepo idempotency.Repository
 }
 
-func NewTransferApplication(logger *slog.Logger, txManager *db.TxManager, accountRepo account.Repository, transactionRepo transaction.Repository, entryRepo entry.Repository) *TransferApp {
+func NewTransferApplication(
+	logger *slog.Logger,
+	txManager *db.TxManager,
+	accountRepo account.Repository,
+	transactionRepo transaction.Repository,
+	entryRepo entry.Repository,
+	idempotencyRepo idempotency.Repository,
+) *TransferApp {
 	return &TransferApp{
 		logger:          logger,
 		txManager:       txManager,
 		accountRepo:     accountRepo,
 		transactionRepo: transactionRepo,
 		entryRepo:       entryRepo,
+		idempotencyRepo: idempotencyRepo,
 	}
 }
 
-func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) error {
+func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) (string, error) {
+	var transactionID string
 	if req.Amount <= 0 {
-		return transfer.ErrInvalidAmount
+		return "", transfer.ErrInvalidAmount
 	}
 
 	if req.FromAccountID == req.ToAccountID {
-		return transfer.ErrSameAccount
+		return "", transfer.ErrSameAccount
 	}
 
-	return t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
+	newIdempotency := idempotency.NewIdempotency(req.IdempotencyKey, "", nil)
+	if err := t.idempotencyRepo.GetByTransactionId(ctx, newIdempotency); err == nil {
+		return newIdempotency.TransactionID(), nil
+	}
+
+	if err := t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
 		// 1. Get `from` account
 		from, err := t.accountRepo.GetForUpdate(ctx, tx, req.FromAccountID)
 		if err != nil {
@@ -88,6 +104,14 @@ func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) error {
 			return err
 		}
 
+		transactionID = tr.ID()
+
+		newIdempotency := idempotency.NewIdempotency(req.IdempotencyKey, tr.ID(), nil)
+		if err := t.idempotencyRepo.Create(ctx, newIdempotency, tx); err != nil {
+			t.logger.Error("failed to create idempotency", "error", err)
+			return err
+		}
+
 		// 7. Debit entry
 		debit := entry.NewEntry(
 			"",
@@ -126,5 +150,9 @@ func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) error {
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return "", err
+	}
+
+	return transactionID, nil
 }

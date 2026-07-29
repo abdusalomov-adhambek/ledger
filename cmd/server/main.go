@@ -3,6 +3,7 @@ package main
 import (
 	"ledger/internal/adapter/postgres/account"
 	"ledger/internal/adapter/postgres/entry"
+	"ledger/internal/adapter/postgres/idempotency"
 	"ledger/internal/adapter/postgres/transaction"
 	"ledger/internal/config"
 	"ledger/internal/db"
@@ -38,10 +39,11 @@ func main() {
 	accountRepo := account.NewAccountRepo(pgx)
 	transactionRepo := transaction.NewTransactionRepo(pgx)
 	entryRepo := entry.NewEntryRepo(pgx)
+	idempotencyRepo := idempotency.NewIdempotencyRepo(pgx)
 
 	// applications
 	accountApp := accountapplication.NewAccountApplication(accountRepo, logger)
-	transferApp := transferapplication.NewTransferApplication(logger, txManager, accountRepo, transactionRepo, entryRepo)
+	transferApp := transferapplication.NewTransferApplication(logger, txManager, accountRepo, transactionRepo, entryRepo, idempotencyRepo)
 	entryApp := entryapplication.NewEntryApplication(logger, entryRepo)
 	transactionApp := transactionapplication.NewTransactionApplication(logger, transactionRepo, entryRepo, txManager, accountRepo)
 

@@ -18,10 +18,8 @@ func NewEntryApplication(logger *slog.Logger, repo entry.Repository) *EntryAppli
 	}
 }
 
-func (a *EntryApplication) GetHistoryList(ctx context.Context, req *GetHistoryListRequest) ([]*GetListResponse, int64, error) {
-	entries, count, err := a.repo.GetList(ctx, &entry.Filter{
-		AccountID: &req.AccountID,
-	})
+func (a *EntryApplication) GetHistoryList(ctx context.Context, filter *entry.Filter, req *GetHistoryListRequest) ([]*GetListResponse, int64, error) {
+	entries, count, err := a.repo.GetList(ctx, filter, req.AccountID)
 	if err != nil {
 		a.logger.Error("failed to get history list", err)
 		return nil, 0, err
@@ -37,6 +35,7 @@ func (a *EntryApplication) GetHistoryList(ctx context.Context, req *GetHistoryLi
 			Description:   entry.Transaction().Description(),
 			Status:        entry.Transaction().Status(),
 			EntryType:     entry.EntryType(),
+			CreatedAt:     entry.CreatedAt().Format("2006-01-02 / 15:04:05"),
 		}
 		data = append(data, detail)
 	}

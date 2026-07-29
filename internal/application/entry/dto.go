@@ -11,4 +11,5 @@ type GetListResponse struct {
 	Description   string `json:"description"`
 	Status        string `json:"status"`
 	EntryType     string `json:"entry_type"`
+	CreatedAt     string `json:"created_at"`
 }

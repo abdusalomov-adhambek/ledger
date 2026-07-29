@@ -2,10 +2,11 @@ package entry
 
 import (
 	"context"
+	"fmt"
 	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
 	"ledger/internal/domain/transaction"
-	"log"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,15 +34,32 @@ func (r *EntryRepo) Create(ctx context.Context, tx pgx.Tx, entry *entry.Entry) e
 	return err
 }
 
-func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter) ([]*entry.Entry, int64, error) {
-	query := `
-		SELECT e.id, e.transaction_id, e.type, e.amount, t.description, t.status
+func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter, accountId string) ([]*entry.Entry, int64, error) {
+	var limitQuery, offsetQuery string
+	if filter.Limit != nil {
+		limitQuery = fmt.Sprintf("LIMIT %d", *filter.Limit)
+	}
+	if filter.Page != nil && filter.Limit != nil {
+		offset := (*filter.Page - 1) * (*filter.Limit)
+		offsetQuery = fmt.Sprintf("OFFSET %d", offset)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			e.id,
+			e.transaction_id,
+			e.type,
+			e.amount,
+			t.description,
+			t.status,
+			t.created_at
 		FROM entries e
 		INNER JOIN transactions t ON e.transaction_id = t.id
-		WHERE e.account_id = $1
-	`
-	log.Printf("get list", "account_id", filter.AccountID)
-	rows, err := r.pgx.Query(ctx, query, &filter.AccountID)
+		WHERE e.account_id = '%s'
+		%s %s
+	`, accountId, limitQuery, offsetQuery)
+
+	rows, err := r.pgx.Query(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -54,17 +72,19 @@ func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter) ([]*entry
 			transactionId,
 			entryType,
 			description string
-			amount int64
-			status string
+			amount    int64
+			status    string
+			createdAt time.Time
 		)
 
-		if err := rows.Scan(&id, &transactionId, &entryType, &amount, &description, &status); err != nil {
+		if err := rows.Scan(&id, &transactionId, &entryType, &amount, &description, &status, &createdAt); err != nil {
 			return nil, 0, err
 		}
 
 		newEntry := entry.NewEntry(id, transactionId, "", entryType, amount)
 		newTransaction := transaction.NewTransaction("", "", status, description, nil)
 		newEntry.SetTransaction(newTransaction)
+		newEntry.SetCreatedAt(createdAt)
 		data = append(data, newEntry)
 	}
 
@@ -74,14 +94,13 @@ func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter) ([]*entry
 		INNER JOIN transactions t ON e.transaction_id = t.id
 		WHERE e.account_id = $1
 	`
-	if err := r.pgx.QueryRow(ctx, query, &filter.AccountID).Scan(&count); err != nil {
+	if err := r.pgx.QueryRow(ctx, query, accountId).Scan(&count); err != nil {
 		return nil, 0, err
 	}
 	return data, count, nil
 }
 
 func (r *EntryRepo) GetEntriesByTransactionID(ctx context.Context, transactionId string) ([]*entry.Entry, error) {
-	log.Println("transactionId", transactionId)
 	query := `
 		SELECT e.id, e.transaction_id, e.type, e.amount, e.account_id, a.balance, a.status
 		FROM entries e

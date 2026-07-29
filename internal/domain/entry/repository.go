@@ -8,11 +8,12 @@ import (
 
 type Repository interface {
 	Create(ctx context.Context, tx pgx.Tx, entry *Entry) error
-	GetList(ctx context.Context, filter *Filter) ([]*Entry, int64, error)
+	GetList(ctx context.Context, filter *Filter, accountId string) ([]*Entry, int64, error)
 	GetEntriesByTransactionID(ctx context.Context, transactionId string) ([]*Entry, error)
 }
 
 type Filter struct {
-	Limit     *int64
-	AccountID *string
+	Limit  *int64
+	Offset *int64
+	Page   *int64
 }
