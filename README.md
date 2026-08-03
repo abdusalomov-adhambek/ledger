@@ -1,17 +1,22 @@
 # Ledger Service
 
-A simple double-entry ledger service written in Go.
+A simple double-entry ledger service written in Go using **gRPC** and **grpc-gateway**.
+
+---
 
 ## Features
 
-- Open account
+- Create account
 - Transfer money between accounts
 - Double-entry accounting
 - Transaction history
 - Reverse transaction
 - Idempotency support
 - Outbox pattern
+- Kafka integration
 - PostgreSQL persistence
+- gRPC API
+- REST API via grpc-gateway
 - Docker support
 
 ---
@@ -19,22 +24,32 @@ A simple double-entry ledger service written in Go.
 ## Architecture
 
 ```text
-                HTTP API (Gin)
-                      │
-                      ▼
-                Handler Layer
-                      │
-                      ▼
-                Application Layer
-                      │
-                      ▼
-                 Domain Layer
-                      │
-                      ▼
-               Repository Layer
-                      │
-                      ▼
-                 PostgreSQL
+               REST Client
+                    │
+                    ▼
+            gRPC Gateway
+                    │
+                    ▼
+              gRPC Service
+                    │
+                    ▼
+           Application Layer
+                    │
+                    ▼
+              Domain Layer
+                    │
+                    ▼
+           Repository Layer
+                    │
+                    ▼
+               PostgreSQL
+
+                    │
+                    ▼
+             Outbox Worker
+                    │
+                    ▼
+                  Kafka
 ```
 
 ---
@@ -42,10 +57,14 @@ A simple double-entry ledger service written in Go.
 ## Tech Stack
 
 - Go
-- Gin
+- gRPC
+- grpc-gateway
+- Protocol Buffers (proto3)
+- Buf
 - PostgreSQL
 - pgx
 - Goose
+- Kafka
 - Docker
 - Docker Compose
 
@@ -66,15 +85,28 @@ Tables:
 ## Project Structure
 
 ```text
+api/
+└── proto/
+
 cmd/
+└── server/
+
 internal/
-    adapter/
-    application/
-    domain/
-    handler/
-    repository/
-    db/
+├── adapter/
+│   ├── grpc/
+│   ├── kafka/
+│   └── postgres/
+├── application/
+├── db/
+├── domain/
+├── logger/
+├── server/
+└── worker/
+
 migrations/
+
+buf.yaml
+buf.gen.yaml
 Dockerfile
 docker-compose.yml
 Makefile
@@ -91,10 +123,10 @@ git clone <repository-url>
 cd ledger
 ```
 
-Start PostgreSQL and API
+Start services
 
 ```bash
-make up
+docker compose up --build
 ```
 
 Run database migrations
@@ -103,36 +135,52 @@ Run database migrations
 make migrate-up
 ```
 
-Stop containers
+Generate protobuf files
 
 ```bash
-make down
+make proto
 ```
 
-View logs
+Run application
 
 ```bash
-make logs
+make run
 ```
 
 ---
 
-## API
+## REST API (grpc-gateway)
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/accounts` | Create account |
-| GET | `/accounts/:id` | Get account |
-| POST | `/transfer` | Transfer money |
-| GET | `/accounts/:id/history` | Get account transaction history |
-| POST | `/transactions/:id/reverse` | Reverse transaction |
+|---------|----------|-------------|
+| POST | `/v1/account` | Create account |
+| GET | `/v1/account/{id}` | Get account |
+| POST | `/v1/transfer` | Transfer money |
+| GET | `/v1/entry/{account_id}/history` | Get transaction history |
+| POST | `/v1/transaction/{transaction_id}/reverse` | Reverse transaction |
+
+---
+
+## gRPC Service
+
+```proto
+service LedgerService {
+    rpc CreateAccount(CreateAccountRequest) returns (CreateAccountResponse);
+    rpc Transfer(TransferRequest) returns (TransferResponse);
+    rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+    rpc GetEntryHistory(GetEntryHistoryRequest) returns (GetEntryHistoryResponse);
+    rpc ReverseTransfer(ReverseTransferRequest) returns (ReverseTransferResponse);
+}
+```
 
 ---
 
 ## Example Transfer Request
 
 ```http
-POST /transfer
+POST /v1/transfer
+Content-Type: application/json
+Idempotency-Key: 8b22cf09-4d78-48cf-a3d2-6db96d5d15a8
 ```
 
 ```json
@@ -140,7 +188,7 @@ POST /transfer
     "from_account_id": "ACCOUNT_ID",
     "to_account_id": "ACCOUNT_ID",
     "amount": 1000,
-    "currency": "USD"
+    "description": "Payment"
 }
 ```
 
@@ -148,39 +196,38 @@ POST /transfer
 
 ## Design Principles
 
-- Double-entry accounting
-- ACID transactions
-- Idempotent requests
-- Optimistic architecture
 - Clean Architecture
 - Repository Pattern
+- Double-entry Accounting
+- ACID Transactions
+- Idempotency
 - Outbox Pattern
+- Event-driven Architecture
 
 ---
 
 ## Make Commands
 
 ```bash
-make up
-make down
-make restart
-make logs
+make run
+make proto
 make migrate-up
 make migrate-down
-make migrate-status
+make lint
+make test
 ```
 
 ---
 
 ## Future Improvements
 
-- Background Outbox Worker
-- Kafka integration
-- gRPC API
 - Authentication & Authorization
-- Metrics (Prometheus)
+- Prometheus metrics
 - Distributed tracing
-- Unit and Integration tests
+- Unit tests
+- Integration tests
+- Multi-currency support
+- Event consumers
 
 ---
 
