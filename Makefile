@@ -1,7 +1,11 @@
 DB_URL=postgres://postgres:postgres@localhost:5433/ledger?sslmode=disable
+.PHONY: run build test lint proto format clean
 
 run:
 	go run ./cmd/server
+
+kafka:
+	go run ./cmd/consumer
 
 build:
 	go build ./cmd/server
@@ -18,6 +22,9 @@ down:
 restart:
 	docker compose down
 	docker compose up --build -d
+
+proto:
+	buf generate
 
 logs:
 	docker compose logs -f

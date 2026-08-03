@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	ledgerv1 "ledger/api/proto"
+	"ledger/internal/adapter/kafka"
 	"ledger/internal/adapter/postgres/account"
 	"ledger/internal/adapter/postgres/entry"
 	"ledger/internal/adapter/postgres/idempotency"
@@ -12,6 +14,7 @@ import (
 	"ledger/internal/db"
 	"ledger/internal/logger"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,12 +26,13 @@ import (
 	transactionapplication "ledger/internal/application/transaction"
 	transferapplication "ledger/internal/application/transfer"
 
-	handler "ledger/internal/handler"
+	ledgergrpc "ledger/internal/adapter/grpc"
 
 	"ledger/internal/worker"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -57,6 +61,17 @@ func run() error {
 	// Tx Manager
 	txManager := db.NewTxManager(pgx)
 
+	// kafka
+	kafkaProducer := kafka.NewKafkaProducer(cfg.Kafka.Brokers, cfg.Kafka.Topic)
+
+	// ctx
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
 	// repositories
 	accountRepo := account.NewAccountRepo(pgx)
 	transactionRepo := transaction.NewTransactionRepo(pgx)
@@ -70,74 +85,92 @@ func run() error {
 	entryApp := entryapplication.NewEntryApplication(logger, entryRepo)
 	transactionApp := transactionapplication.NewTransactionApplication(logger, transactionRepo, entryRepo, txManager, accountRepo)
 
-	// handlers
-	accountHandler := handler.NewAccountHandler(accountApp, logger)
-	transactionHandler := handler.NewTransactionHandler(transactionApp, logger)
-	transferHandler := handler.NewTransferHandler(transferApp, logger)
-	entryHandler := handler.NewEntryHandler(entryApp, logger)
-	healthHandler := handler.NewHealthHandler()
-
 	// outbox events worker
-	worker := worker.NewOutboxWorker(outboxEventRepo, logger)
+	worker := worker.NewOutboxWorker(outboxEventRepo, logger, kafkaProducer)
+	logger.Info("outbox worker started", worker)
 
-	app := gin.Default()
+	//  --------------------------- gRPC gateway ---------------------------
+	gatewayMux := runtime.NewServeMux(
+		runtime.WithIncomingHeaderMatcher(headerMatcher),
+	)
 
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{"GET", "POST", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
-	}))
-
-	// ------------------ health ------------------
-	app.GET("/", healthHandler.Health)
-
-	// ------------------- account -------------------
-	app.POST("/account", accountHandler.CreateAccount)
-	app.GET("/account/:id", accountHandler.GetByID)
-
-	// ------------------- transfer -------------------
-	app.POST("/transfer", transferHandler.Transfer)
-
-	// ------------------- entry -------------------
-	app.GET("/entry/:account_id/history", entryHandler.GetHistoryEntries)
-
-	// ------------------- transaction -------------------
-	app.PUT("/transaction/:id/reverse", transactionHandler.ReverseTransaction)
-
-	// app.Run(fmt.Sprintf(":%d", cfg.Port))
-
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: app,
+	if err := ledgerv1.RegisterLedgerServiceHandlerFromEndpoint(
+		ctx,
+		gatewayMux,
+		fmt.Sprintf("localhost:%s", cfg.GRPC.LedgerPort),
+		[]grpc.DialOption{
+			grpc.WithTransportCredentials(
+				insecure.NewCredentials(),
+			),
+		},
+	); err != nil {
+		return err
 	}
 
-	ctx, stop := signal.NotifyContext(
-		context.Background(),
-		os.Interrupt,
-		syscall.SIGTERM,
-	)
-	defer stop()
+	gatewayServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.Port),
+		Handler: gatewayMux,
+	}
 
+	// --------------------------- gRPC server ---------------------------
+	grpcServer := grpc.NewServer()
+
+	ledgerGrpcService := ledgergrpc.NewLedgerGRPCService(
+		accountApp,
+		transferApp,
+		transactionApp,
+		entryApp)
+
+	ledgerv1.RegisterLedgerServiceServer(
+		grpcServer, ledgerGrpcService,
+	)
+
+	lis, err := net.Listen("tcp", ":"+cfg.GRPC.LedgerPort)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		logger.Info("gRPC server is listening", "port", cfg.GRPC.LedgerPort)
+		if err := grpcServer.Serve(lis); err != nil {
+			logger.Error("gRPC server failed", "error", err)
+		}
+	}()
+
+	// --------------------------- Shutdown ---------------------------
 	go func() {
 		<-ctx.Done()
 
 		logger.Info("shutting down server")
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
-		if err := srv.Shutdown(shutdownCtx); err != nil {
+		if err := gatewayServer.Shutdown(shutdownCtx); err != nil {
 			logger.Error("failed to shutdown server", "error", err)
 		}
 
+		grpcServer.GracefulStop()
+		logger.Info("grpc server stopped")
 	}()
 
-	go worker.Run(ctx)
+	// --------------------------- Worker run ---------------------------
+	// go worker.Run(ctx)
 
-	logger.Info("server started", "port", cfg.Port)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return err
+	// --------------------------- gRPC Gateway run ---------------------------
+	logger.Info("grpc gateway started", "port", cfg.Port)
+	if err := gatewayServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		logger.Error("gateway stopped", "error", err)
 	}
 
 	return nil
+}
+
+func headerMatcher(key string) (string, bool) {
+	switch key {
+	case "Idempotency-Key":
+		return "idempotency-key", true
+	default:
+		return runtime.DefaultHeaderMatcher(key)
+	}
 }

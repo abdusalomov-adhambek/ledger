@@ -27,7 +27,7 @@ func (h *TransactionHandler) ReverseTransaction(c *gin.Context) {
 	var req *transaction.ReverseTransactionRequest
 	ctx := context.Background()
 
-	transactionId := c.Param("id")
+	transactionId := c.Param("transaction_id")
 	if transactionId == "" {
 		h.logger.Error("transaction id is required")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "transaction id is required"})

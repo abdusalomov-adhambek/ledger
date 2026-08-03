@@ -45,7 +45,7 @@ func (e *OutboxEvent) EventType() string {
 	return e.eventType
 }
 
-func (e *OutboxEvent) AggregateId() string {
+func (e *OutboxEvent) AggregateID() string {
 	return e.aggregateId
 }
 

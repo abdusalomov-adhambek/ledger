@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"ledger/internal/adapter/kafka"
 	"ledger/internal/domain/outbox_events"
 	"log/slog"
 	"time"
@@ -10,12 +11,14 @@ import (
 type OutboxWorker struct {
 	outboxRepo outbox_events.Repository
 	logger     *slog.Logger
+	producer   kafka.Producer
 }
 
-func NewOutboxWorker(outboxRepo outbox_events.Repository, logger *slog.Logger) *OutboxWorker {
+func NewOutboxWorker(outboxRepo outbox_events.Repository, logger *slog.Logger, producer kafka.Producer) *OutboxWorker {
 	return &OutboxWorker{
 		outboxRepo: outboxRepo,
 		logger:     logger,
+		producer:   producer,
 	}
 }
 
@@ -57,6 +60,16 @@ func (w *OutboxWorker) process(ctx context.Context) {
 }
 
 func (w *OutboxWorker) publish(ctx context.Context, event *outbox_events.OutboxEvent) error {
-	w.logger.Info("publishing event", "id", event.ID())
+	if err := w.producer.Publish(ctx, event); err != nil {
+		w.logger.Error(
+			"failed to publish event",
+			"id", event.ID(),
+			"error", err,
+		)
+		return err
+	}
+
+	w.logger.Info("event published", "id", event.ID())
+
 	return nil
 }

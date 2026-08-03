@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package ledger.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "github.com/abdusalomov-adhambek/ledger/api/proto/ledger/v1;ledgerv1";
+
+service LedgerService {
+    rpc CreateAccount(CreateAccountRequest) returns (CreateAccountResponse){
+        option (google.api.http) = {
+            post: "/v1/account"
+            body: "*"
+        };
+    }
+    rpc Transfer(TransferRequest) returns (TransferResponse) {
+        option (google.api.http) = {
+            post: "/v1/transfer"
+            body: "*"
+        };
+    }
+    rpc GetAccount(GetAccountRequest) returns (GetAccountResponse){
+        option (google.api.http) = {
+            get: "/v1/account/{id}"
+        };
+    }
+    rpc ReverseTransfer(ReverseTransferRequest) returns (ReverseTransferResponse) {
+        option (google.api.http) = {
+            post: "/v1/transaction/{transaction_id}/reverse"
+            body: "*"
+        };
+    }
+    rpc GetEntryHistory(GetEntryHistoryRequest) returns (GetEntryHistoryResponse) {
+        option (google.api.http) = {
+            get: "/v1/entry/{account_id}/history"
+        };
+    }
+}
+
+enum Currency {
+    USD = 0;
+    EUR = 1;
+    UZS = 2;
+}
+
+message CreateAccountRequest {
+    string owner_id = 1;
+    Currency currency = 2;
+    int64 balance = 3;
+}
+
+message CreateAccountResponse {
+    string id = 1;
+}
+
+message TransferRequest {
+    string from_account_id = 1;
+    string to_account_id = 2;
+    int64 amount = 3;
+    string description = 4;
+    string idempotency_key = 5;
+}
+
+message TransferResponse {
+    string id = 1;
+}
+
+message GetAccountRequest {
+    string id = 1;
+}
+
+message GetAccountResponse {
+    string id = 1;
+    string owner_id = 2;
+    string currency = 3;
+    int64 balance = 4;
+    string status = 5;
+    string created_at = 6;
+}
+
+message ReverseTransferRequest {
+    string transaction_id = 1;
+}
+
+message ReverseTransferResponse {
+    string message = 1;
+}
+
+message GetEntryHistoryRequest {
+    string account_id = 1;
+    int64 limit = 2;
+    int64 offset = 3;
+    int64 page = 4;
+}
+
+message GentryHistory {
+    string id = 1;
+    string transaction_id = 2;
+    int64 amount = 3;
+    string description = 4;
+    string status = 5;
+    string entry_type = 6;
+    string created_at = 7;
+}
+
+message GetEntryHistoryResponse {
+    repeated GentryHistory data = 1;
+    int64 count = 2;
+}

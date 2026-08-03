@@ -6,6 +6,8 @@ type Config struct {
 	Port     int            `env:"PORT"`
 	Postgres PostgresConfig `env:"POSTGRES"`
 	Logger   LoggerConfig   `env:"LOGGER"`
+	Kafka    KafkaConfig    `env:"KAFKA"`
+	GRPC     GRPCConfig     `env:"GRPC"`
 }
 
 type PostgresConfig struct {
@@ -19,4 +21,13 @@ type PostgresConfig struct {
 type LoggerConfig struct {
 	LogLevel  string `env:"LOG_LEVEL"`
 	LogFormat string `env:"LOG_FORMAT"`
+}
+
+type KafkaConfig struct {
+	Brokers []string `env:"KAFKA_BROKERS"`
+	Topic   string   `env:"KAFKA_TOPIC"`
+}
+
+type GRPCConfig struct {
+	LedgerPort string `env:"GRPC_LEDGER_PORT"`
 }

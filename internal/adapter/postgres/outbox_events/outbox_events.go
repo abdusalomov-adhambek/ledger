@@ -27,7 +27,7 @@ func (r *OutboxEventRepo) Create(ctx context.Context, tx pgx.Tx, event *outbox_e
 		)
 		VALUES ($1, $2, $3, $4)
 	`
-	_, err := tx.Exec(ctx, query, event.EventType(), event.AggregateId(), event.Payload(), event.Status())
+	_, err := tx.Exec(ctx, query, event.EventType(), event.AggregateID(), event.Payload(), event.Status())
 	return err
 }
 

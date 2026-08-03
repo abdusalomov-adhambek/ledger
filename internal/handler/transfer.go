@@ -40,7 +40,7 @@ func (h *TransferHandler) Transfer(c *gin.Context) {
 	}
 	req.IdempotencyKey = idempotencyKey
 
-	transactionId, err := h.transferApp.Transfer(ctx, req)
+	transactionId, err := h.transferApp.Transfer(ctx, &req)
 	if err != nil {
 		h.logger.Error("failed to transfer", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

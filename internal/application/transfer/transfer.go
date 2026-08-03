@@ -47,7 +47,7 @@ func NewTransferApplication(
 	}
 }
 
-func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) (string, error) {
+func (t *TransferApp) Transfer(ctx context.Context, req *TransferRequest) (string, error) {
 	var transactionID string
 	if req.Amount <= 0 {
 		return "", transfer.ErrInvalidAmount
@@ -110,7 +110,6 @@ func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) (string
 		}
 
 		transactionID = tr.ID()
-
 		newIdempotency := idempotency.NewIdempotency(req.IdempotencyKey, tr.ID(), nil)
 		if err := t.idempotencyRepo.Create(ctx, newIdempotency, tx); err != nil {
 			t.logger.Error("failed to create idempotency", "error", err)
@@ -165,12 +164,12 @@ func (t *TransferApp) Transfer(ctx context.Context, req TransferRequest) (string
 				"description":     req.Description,
 			},
 		)
+
 		if err != nil {
 			t.logger.Error("failed to marshal payload", "error", err)
 			return err
 		}
 		outboxEvent := outbox_events.NewOutboxEvent("", outbox_events.EventTransferCompleted, transactionID, payloadMarshal, outbox_events.StatusPending)
-
 		if err := t.outboxEventRepo.Create(ctx, tx, outboxEvent); err != nil {
 			t.logger.Error("failed to create outbox event", "error", err)
 			return err
