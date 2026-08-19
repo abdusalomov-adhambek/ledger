@@ -63,18 +63,36 @@ func (t *TransferApp) Transfer(ctx context.Context, req *TransferRequest) (strin
 	}
 
 	if err := t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
+
+		smallID := req.FromAccountID
+		largeID := req.ToAccountID
+
+		if smallID > largeID {
+			smallID, largeID = largeID, smallID
+		}
+
 		// 1. Get `from` account
-		from, err := t.accountRepo.GetForUpdate(ctx, tx, req.FromAccountID)
+		firstAccount, err := t.accountRepo.GetForUpdate(ctx, tx, smallID)
 		if err != nil {
 			t.logger.Error("failed to get from account", "error", err)
 			return err
 		}
 
 		// 2. Get `to` account
-		to, err := t.accountRepo.GetForUpdate(ctx, tx, req.ToAccountID)
+		secondAccount, err := t.accountRepo.GetForUpdate(ctx, tx, largeID)
 		if err != nil {
 			t.logger.Error("failed to get to account", "error", err)
 			return err
+		}
+
+		var from, to *account.Account
+
+		if firstAccount.ID() == req.FromAccountID {
+			from = firstAccount
+			to = secondAccount
+		} else {
+			from = secondAccount
+			to = firstAccount
 		}
 
 		// 3. Currency bir xilmi
