@@ -55,14 +55,15 @@ func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter, accountId
 			t.created_at
 		FROM entries e
 		INNER JOIN transactions t ON e.transaction_id = t.id
-		WHERE e.account_id = '%s'
+		WHERE e.account_id = $1
 		%s %s
-	`, accountId, limitQuery, offsetQuery)
+	`, limitQuery, offsetQuery)
 
-	rows, err := r.pgx.Query(ctx, query)
+	rows, err := r.pgx.Query(ctx, query, accountId)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer rows.Close()
 
 	var data []*entry.Entry
 
@@ -86,6 +87,10 @@ func (r *EntryRepo) GetList(ctx context.Context, filter *entry.Filter, accountId
 		newEntry.SetTransaction(newTransaction)
 		newEntry.SetCreatedAt(createdAt)
 		data = append(data, newEntry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
 	}
 
 	var count int64
