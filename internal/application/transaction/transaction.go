@@ -46,16 +46,47 @@ func (t *TransactionApplication) ReverseTransaction(ctx context.Context, req *Re
 
 	return t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
 
-		// get entries and accounts
-		fromAccount := &account.Account{}
-		toAccount := &account.Account{}
+		// Mark the original as reversed first: the row lock serializes concurrent
+		// reversals and fails when it was already reversed
+		if err := t.repo.Reverse(ctx, req.TransactionID, tx); err != nil {
+			t.logger.Error("failed to reverse transaction", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
+			return err
+		}
+
+		// get entries' account ids
+		var fromID, toID string
 		for _, entry := range entries {
 			switch entry.EntryType() {
 			case "DEBIT":
-				fromAccount = entry.Account()
+				fromID = entry.AccountID()
 			case "CREDIT":
-				toAccount = entry.Account()
+				toID = entry.AccountID()
 			}
+		}
+
+		smallID := fromID
+		largeID := toID
+
+		if smallID > largeID {
+			smallID, largeID = largeID, smallID
+		}
+
+		// lock accounts ordered by id and read their current balances
+		firstAccount, err := t.accountRepo.GetForUpdate(ctx, tx, smallID)
+		if err != nil {
+			t.logger.Error("failed to get account", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
+			return err
+		}
+
+		secondAccount, err := t.accountRepo.GetForUpdate(ctx, tx, largeID)
+		if err != nil {
+			t.logger.Error("failed to get account", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
+			return err
+		}
+
+		fromAccount, toAccount := firstAccount, secondAccount
+		if firstAccount.ID() != fromID {
+			fromAccount, toAccount = secondAccount, firstAccount
 		}
 
 		//deposit amount back to fromAccount
@@ -92,12 +123,6 @@ func (t *TransactionApplication) ReverseTransaction(ctx context.Context, req *Re
 		// Update reversal of original transaction
 		if err := t.repo.UpdateReversalOf(ctx, newTransaction, req.TransactionID, tx); err != nil {
 			t.logger.Error("failed to update reversal of", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
-			return err
-		}
-
-		// Update original transaction status to reversed
-		if err := t.repo.Reverse(ctx, req.TransactionID, tx); err != nil {
-			t.logger.Error("failed to reverse transaction", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
 			return err
 		}
 
