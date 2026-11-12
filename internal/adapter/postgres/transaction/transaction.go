@@ -45,7 +45,7 @@ func (t *TransactionRepo) Reverse(ctx context.Context, transactionId string, tx 
 	query := `
 		UPDATE transactions
 		SET status = 'REVERSED'
-		WHERE id = $1 AND status = 'COMPLETED'
+		WHERE id = $1 AND status = 'COMPLETED' AND reversal_of IS NULL
 	`
 
 	tag, err := tx.Exec(ctx, query, transactionId)

@@ -21,7 +21,7 @@ func NewEntryApplication(logger *slog.Logger, repo entry.Repository) *EntryAppli
 func (a *EntryApplication) GetHistoryList(ctx context.Context, filter *entry.Filter, req *GetHistoryListRequest) ([]*GetListResponse, int64, error) {
 	entries, count, err := a.repo.GetList(ctx, filter, req.AccountID)
 	if err != nil {
-		a.logger.Error("failed to get history list", err)
+		a.logger.Error("failed to get history list", "error", err)
 		return nil, 0, err
 	}
 

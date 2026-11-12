@@ -126,9 +126,9 @@ func (t *TransactionApplication) ReverseTransaction(ctx context.Context, req *Re
 			return err
 		}
 
-		// Create new entries for reversed transaction
-		debit := entry.NewEntry("", newTransaction.ID(), fromAccount.ID(), entry.EntryTypeDebit, entries[0].Amount())
-		credit := entry.NewEntry("", newTransaction.ID(), toAccount.ID(), entry.EntryTypeCredit, entries[0].Amount())
+		// Create new entries for reversed transaction: toAccount pays the refund, fromAccount receives it
+		debit := entry.NewEntry("", newTransaction.ID(), toAccount.ID(), entry.EntryTypeDebit, entries[0].Amount())
+		credit := entry.NewEntry("", newTransaction.ID(), fromAccount.ID(), entry.EntryTypeCredit, entries[0].Amount())
 
 		// Create new debit entry
 		if err := t.entryRepo.Create(ctx, tx, debit); err != nil {

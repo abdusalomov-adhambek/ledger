@@ -112,6 +112,26 @@ func (f *fixture) status(t *testing.T) string {
 	return status
 }
 
+// assertOneReversal checks that exactly one reversal exists, with its two entries.
+func (f *fixture) assertOneReversal(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	var reversals, entries int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM transactions WHERE reversal_of = $1`, f.transactionID).Scan(&reversals); err != nil {
+		t.Fatalf("count reversals: %v", err)
+	}
+	if reversals != 1 {
+		t.Fatalf("reversals = %d, want 1", reversals)
+	}
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM entries WHERE account_id IN ($1, $2)`, f.fromID, f.toID).Scan(&entries); err != nil {
+		t.Fatalf("count entries: %v", err)
+	}
+	if entries != 4 {
+		t.Fatalf("entries = %d, want 4 (2 original + 2 reversal)", entries)
+	}
+}
+
 func TestReverseTransactionTwiceIsRejected(t *testing.T) {
 	f := newFixture(t, 50, 150, 50)
 	ctx := context.Background()
@@ -133,6 +153,7 @@ func TestReverseTransactionTwiceIsRejected(t *testing.T) {
 	if got := f.status(t); got != transaction.StatusReversed {
 		t.Fatalf("status = %s, want %s", got, transaction.StatusReversed)
 	}
+	f.assertOneReversal(t)
 }
 
 func TestReverseTransactionConcurrentOnlyOneSucceeds(t *testing.T) {
@@ -166,6 +187,10 @@ func TestReverseTransactionConcurrentOnlyOneSucceeds(t *testing.T) {
 	if from, to := f.balances(t); from != 100 || to != 100 {
 		t.Fatalf("got balances %d/%d, want 100/100", from, to)
 	}
+	if got := f.status(t); got != transaction.StatusReversed {
+		t.Fatalf("status = %s, want %s", got, transaction.StatusReversed)
+	}
+	f.assertOneReversal(t)
 }
 
 func TestReverseTransactionWithoutEntries(t *testing.T) {
@@ -196,4 +221,27 @@ func TestReverseTransactionInsufficientFundsRollsBack(t *testing.T) {
 	if got := f.status(t); got != transaction.StatusCompleted {
 		t.Fatalf("status = %s, want %s", got, transaction.StatusCompleted)
 	}
+}
+
+func TestReverseTransactionReversalIsNotReversible(t *testing.T) {
+	f := newFixture(t, 50, 150, 50)
+	ctx := context.Background()
+
+	if err := f.app.ReverseTransaction(ctx, &ReverseTransactionRequest{TransactionID: f.transactionID}); err != nil {
+		t.Fatalf("reverse: %v", err)
+	}
+
+	var reversalID string
+	if err := f.pool.QueryRow(ctx, `SELECT id FROM transactions WHERE reversal_of = $1`, f.transactionID).Scan(&reversalID); err != nil {
+		t.Fatalf("find reversal: %v", err)
+	}
+
+	err := f.app.ReverseTransaction(ctx, &ReverseTransactionRequest{TransactionID: reversalID})
+	if !errors.Is(err, transaction.ErrAlreadyReversed) {
+		t.Fatalf("reversing a reversal error = %v, want ErrAlreadyReversed", err)
+	}
+	if from, to := f.balances(t); from != 100 || to != 100 {
+		t.Fatalf("got balances %d/%d, want 100/100", from, to)
+	}
+	f.assertOneReversal(t)
 }
