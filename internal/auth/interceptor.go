@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -13,9 +14,17 @@ import (
 
 var errUnauthenticated = status.Error(codes.Unauthenticated, "unauthenticated")
 
+// MinSecretLength is the shortest HS256 secret accepted, so that tokens cannot be forged by brute force.
+const MinSecretLength = 32
+
 // UnaryInterceptor authenticates each call with an HS256 bearer token signed
-// with secret and puts the token's subject in the context.
-func UnaryInterceptor(secret []byte) grpc.UnaryServerInterceptor {
+// with secret and puts the token's subject in the context. It fails when the
+// secret is shorter than MinSecretLength.
+func UnaryInterceptor(secret []byte) (grpc.UnaryServerInterceptor, error) {
+	if len(secret) < MinSecretLength {
+		return nil, fmt.Errorf("auth secret must be at least %d bytes", MinSecretLength)
+	}
+
 	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		md, _ := metadata.FromIncomingContext(ctx)
 		values := md.Get("authorization")
@@ -40,5 +49,5 @@ func UnaryInterceptor(secret []byte) grpc.UnaryServerInterceptor {
 		}
 
 		return handler(WithSubject(ctx, claims.Subject), req)
-	}
+	}, nil
 }

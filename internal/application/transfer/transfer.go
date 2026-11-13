@@ -20,7 +20,7 @@ import (
 
 type TransferApp struct {
 	logger    *slog.Logger
-	txManager *db.TxManager
+	txManager db.Manager
 
 	accountRepo     account.Repository
 	transactionRepo transaction.Repository
@@ -31,7 +31,7 @@ type TransferApp struct {
 
 func NewTransferApplication(
 	logger *slog.Logger,
-	txManager *db.TxManager,
+	txManager db.Manager,
 	accountRepo account.Repository,
 	transactionRepo transaction.Repository,
 	entryRepo entry.Repository,

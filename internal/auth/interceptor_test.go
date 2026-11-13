@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var secret = []byte("test-secret")
+var secret = []byte("test-secret-that-is-at-least-32-bytes")
 
 func token(t *testing.T, method jwt.SigningMethod, key any, claims jwt.RegisteredClaims) string {
 	t.Helper()
@@ -54,7 +54,12 @@ func TestUnaryInterceptor(t *testing.T) {
 			}
 
 			var gotSub string
-			_, err := UnaryInterceptor(secret)(ctx, nil, &grpc.UnaryServerInfo{}, func(ctx context.Context, _ any) (any, error) {
+			intercept, err := UnaryInterceptor(secret)
+			if err != nil {
+				t.Fatalf("UnaryInterceptor: %v", err)
+			}
+
+			_, err = intercept(ctx, nil, &grpc.UnaryServerInfo{}, func(ctx context.Context, _ any) (any, error) {
 				gotSub, _ = SubjectFromContext(ctx)
 				return nil, nil
 			})
@@ -72,5 +77,11 @@ func TestUnaryInterceptor(t *testing.T) {
 				t.Fatalf("subject = %q, want %q", gotSub, tt.wantSub)
 			}
 		})
+	}
+}
+
+func TestUnaryInterceptorRejectsShortSecret(t *testing.T) {
+	if _, err := UnaryInterceptor([]byte("too-short")); err == nil {
+		t.Fatal("err = nil, want an error for a short secret")
 	}
 }

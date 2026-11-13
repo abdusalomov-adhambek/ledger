@@ -18,10 +18,10 @@ type TransactionApplication struct {
 	entryRepo   entry.Repository
 	accountRepo account.Repository
 
-	txManager *db.TxManager
+	txManager db.Manager
 }
 
-func NewTransactionApplication(logger *slog.Logger, repo transaction.Repository, entryRepo entry.Repository, txManager *db.TxManager, accountRepo account.Repository) *TransactionApplication {
+func NewTransactionApplication(logger *slog.Logger, repo transaction.Repository, entryRepo entry.Repository, txManager db.Manager, accountRepo account.Repository) *TransactionApplication {
 	return &TransactionApplication{
 		logger:      logger,
 		repo:        repo,

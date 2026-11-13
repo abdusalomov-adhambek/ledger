@@ -34,6 +34,7 @@ services:
       POSTGRES_DB: ledger
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?set AUTH_JWT_SECRET to a random secret of at least 32 bytes}
 
   kafka:
     image: apache/kafka:4.0.0

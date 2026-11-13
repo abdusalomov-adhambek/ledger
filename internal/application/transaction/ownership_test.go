@@ -18,6 +18,9 @@ import (
 
 type fakeAccountRepo struct {
 	accounts map[string]*account.Account
+	// locked allows GetForUpdate and UpdateBalance; otherwise they must not be reached.
+	locked  bool
+	updated []string
 }
 
 func (f *fakeAccountRepo) Create(context.Context, *account.Account) error { return nil }
@@ -29,12 +32,19 @@ func (f *fakeAccountRepo) GetByID(_ context.Context, id string) (*account.Accoun
 	return nil, pgx.ErrNoRows
 }
 
-func (f *fakeAccountRepo) GetForUpdate(context.Context, pgx.Tx, string) (*account.Account, error) {
-	panic("reverse must be rejected before locking accounts")
+func (f *fakeAccountRepo) GetForUpdate(_ context.Context, _ pgx.Tx, id string) (*account.Account, error) {
+	if !f.locked {
+		panic("reverse must be rejected before locking accounts")
+	}
+	return f.accounts[id], nil
 }
 
-func (f *fakeAccountRepo) UpdateBalance(context.Context, *account.Account, pgx.Tx) error {
-	panic("reverse must be rejected before updating balances")
+func (f *fakeAccountRepo) UpdateBalance(_ context.Context, a *account.Account, _ pgx.Tx) error {
+	if !f.locked {
+		panic("reverse must be rejected before updating balances")
+	}
+	f.updated = append(f.updated, a.ID())
+	return nil
 }
 
 type fakeEntryRepo struct {
@@ -88,5 +98,54 @@ func TestReverseTransactionChecksDebitedAccountOwner(t *testing.T) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+type fakeTransactionRepo struct{}
+
+func (fakeTransactionRepo) Create(_ context.Context, _ pgx.Tx, tr *transaction.Transaction) error {
+	tr.SetID("tx-new")
+	return nil
+}
+
+func (fakeTransactionRepo) Reverse(context.Context, string, pgx.Tx) error { return nil }
+
+func (fakeTransactionRepo) UpdateReversalOf(context.Context, *transaction.Transaction, string, pgx.Tx) error {
+	return nil
+}
+
+// fakeTxManager runs the function without a database transaction.
+type fakeTxManager struct{}
+
+func (fakeTxManager) WithTransaction(_ context.Context, fn func(tx pgx.Tx) error) error {
+	return fn(nil)
+}
+
+func TestReverseTransactionByOwnerMovesMoneyBack(t *testing.T) {
+	accs := map[string]*account.Account{
+		"acc-a": account.NewAccount("acc-a", "owner-a", account.CurrencyUSD, 50, account.AccountStatusOpen),
+		"acc-b": account.NewAccount("acc-b", "owner-b", account.CurrencyUSD, 150, account.AccountStatusOpen),
+	}
+	accountRepo := &fakeAccountRepo{accounts: accs, locked: true}
+	app := &TransactionApplication{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		repo:   fakeTransactionRepo{},
+		entryRepo: &fakeEntryRepo{entries: []*entry.Entry{
+			entry.NewEntry("e-1", "tx-1", "acc-a", entry.EntryTypeDebit, 50),
+			entry.NewEntry("e-2", "tx-1", "acc-b", entry.EntryTypeCredit, 50),
+		}},
+		accountRepo: accountRepo,
+		txManager:   fakeTxManager{},
+	}
+
+	ctx := auth.WithSubject(context.Background(), "owner-a")
+	if err := app.ReverseTransaction(ctx, &ReverseTransactionRequest{TransactionID: "tx-1"}); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if from, to := accs["acc-a"].Balance(), accs["acc-b"].Balance(); from != 100 || to != 100 {
+		t.Fatalf("balances = %d/%d, want 100/100", from, to)
+	}
+	if len(accountRepo.updated) != 2 {
+		t.Fatalf("updated accounts = %v, want both", accountRepo.updated)
 	}
 }

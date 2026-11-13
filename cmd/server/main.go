@@ -114,9 +114,12 @@ func run() error {
 	}
 
 	// --------------------------- gRPC server ---------------------------
-	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(auth.UnaryInterceptor([]byte(cfg.Auth.JWTSecret))),
-	)
+	authInterceptor, err := auth.UnaryInterceptor([]byte(cfg.Auth.JWTSecret))
+	if err != nil {
+		return err
+	}
+
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(authInterceptor))
 
 	ledgerGrpcService := ledgergrpc.NewLedgerGRPCService(
 		accountApp,

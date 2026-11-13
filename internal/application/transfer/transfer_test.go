@@ -12,12 +12,17 @@ import (
 	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
 	"ledger/internal/domain/idempotency"
+	"ledger/internal/domain/outbox_events"
+	"ledger/internal/domain/transaction"
 
 	"github.com/jackc/pgx/v5"
 )
 
 type fakeAccountRepo struct {
 	accounts map[string]*account.Account
+	// locked allows GetForUpdate and UpdateBalance; otherwise they must not be reached.
+	locked  bool
+	updated []string
 }
 
 func (f *fakeAccountRepo) Create(context.Context, *account.Account) error { return nil }
@@ -29,12 +34,19 @@ func (f *fakeAccountRepo) GetByID(_ context.Context, id string) (*account.Accoun
 	return nil, pgx.ErrNoRows
 }
 
-func (f *fakeAccountRepo) GetForUpdate(ctx context.Context, _ pgx.Tx, id string) (*account.Account, error) {
-	panic("transfer must be rejected before locking accounts")
+func (f *fakeAccountRepo) GetForUpdate(_ context.Context, _ pgx.Tx, id string) (*account.Account, error) {
+	if !f.locked {
+		panic("transfer must be rejected before locking accounts")
+	}
+	return f.accounts[id], nil
 }
 
-func (f *fakeAccountRepo) UpdateBalance(context.Context, *account.Account, pgx.Tx) error {
-	panic("transfer must be rejected before updating balances")
+func (f *fakeAccountRepo) UpdateBalance(_ context.Context, a *account.Account, _ pgx.Tx) error {
+	if !f.locked {
+		panic("transfer must be rejected before updating balances")
+	}
+	f.updated = append(f.updated, a.ID())
+	return nil
 }
 
 // fakeIdempotencyRepo reports every key as already used by transaction tx-1.
@@ -139,5 +151,76 @@ func TestTransferReplayByOwnerReturnsTransaction(t *testing.T) {
 	}
 	if id != "tx-1" {
 		t.Fatalf("id = %q, want tx-1", id)
+	}
+}
+
+// freshIdempotencyRepo reports every key as unused.
+type freshIdempotencyRepo struct{}
+
+func (freshIdempotencyRepo) Create(context.Context, *idempotency.Idempotency, pgx.Tx) error {
+	return nil
+}
+
+func (freshIdempotencyRepo) GetByTransactionId(context.Context, *idempotency.Idempotency) error {
+	return pgx.ErrNoRows
+}
+
+type fakeTransactionRepo struct{}
+
+func (fakeTransactionRepo) Create(_ context.Context, _ pgx.Tx, tr *transaction.Transaction) error {
+	tr.SetID("tx-new")
+	return nil
+}
+
+func (fakeTransactionRepo) Reverse(context.Context, string, pgx.Tx) error { return nil }
+
+func (fakeTransactionRepo) UpdateReversalOf(context.Context, *transaction.Transaction, string, pgx.Tx) error {
+	return nil
+}
+
+type fakeOutboxRepo struct{}
+
+func (fakeOutboxRepo) Create(context.Context, pgx.Tx, *outbox_events.OutboxEvent) error { return nil }
+
+func (fakeOutboxRepo) GetPending(context.Context) ([]*outbox_events.OutboxEvent, error) {
+	return nil, nil
+}
+
+func (fakeOutboxRepo) MarkProcessed(context.Context, string, string) error { return nil }
+
+// fakeTxManager runs the function without a database transaction.
+type fakeTxManager struct{}
+
+func (fakeTxManager) WithTransaction(_ context.Context, fn func(tx pgx.Tx) error) error {
+	return fn(nil)
+}
+
+func TestTransferByOwnerMovesMoney(t *testing.T) {
+	accs := accounts()
+	accountRepo := &fakeAccountRepo{accounts: accs, locked: true}
+	app := &TransferApp{
+		logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		txManager:       fakeTxManager{},
+		accountRepo:     accountRepo,
+		transactionRepo: fakeTransactionRepo{},
+		entryRepo:       &fakeEntryRepo{},
+		idempotencyRepo: freshIdempotencyRepo{},
+		outboxEventRepo: fakeOutboxRepo{},
+	}
+
+	// owner-a pays into acc-b, which belongs to someone else
+	ctx := auth.WithSubject(context.Background(), "owner-a")
+	id, err := app.Transfer(ctx, &TransferRequest{FromAccountID: "acc-a", ToAccountID: "acc-b", Amount: 100, IdempotencyKey: "key-1"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if id != "tx-new" {
+		t.Fatalf("id = %q, want tx-new", id)
+	}
+	if from, to := accs["acc-a"].Balance(), accs["acc-b"].Balance(); from != 400 || to != 600 {
+		t.Fatalf("balances = %d/%d, want 400/600", from, to)
+	}
+	if len(accountRepo.updated) != 2 {
+		t.Fatalf("updated accounts = %v, want both", accountRepo.updated)
 	}
 }
