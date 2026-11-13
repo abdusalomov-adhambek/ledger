@@ -30,7 +30,7 @@ func (a *AccountApplication) CreateAccount(ctx context.Context, req CreateAccoun
 		return nil, errors.ErrInvalidCurrency
 	}
 
-	newAccount := account.NewAccount("", req.OwnerID, req.Currency, req.Balance, account.AccountStatusOpen)
+	newAccount := account.NewAccount("", req.OwnerID, req.Currency, 0, account.AccountStatusOpen)
 	if err := a.repo.Create(ctx, newAccount); err != nil {
 		a.logger.Error("failed to create account", "error", err)
 		return nil, err
