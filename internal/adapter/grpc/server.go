@@ -41,7 +41,6 @@ func (s *LedgerService) CreateAccount(ctx context.Context, req *ledgerv1.CreateA
 	res, err := s.accountApp.CreateAccount(ctx, account.CreateAccountRequest{
 		OwnerID:  req.OwnerId,
 		Currency: currency,
-		Balance:  req.Balance,
 	})
 	if err != nil {
 		return nil, err

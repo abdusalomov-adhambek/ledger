@@ -3,7 +3,8 @@ package account
 type CreateAccountRequest struct {
 	OwnerID  string `json:"owner_id" validate:"required"`
 	Currency string `json:"currency" validate:"required"`
-	Balance  int64  `json:"balance" validate:"required"`
+	// Balance is ignored: accounts always open at 0 and are funded through a ledger posting.
+	Balance int64 `json:"balance"`
 }
 
 type CreateAccountResponse struct {
