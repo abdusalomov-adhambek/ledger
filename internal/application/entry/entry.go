@@ -2,23 +2,32 @@ package entry
 
 import (
 	"context"
+	"ledger/internal/auth"
+	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
 	"log/slog"
 )
 
 type EntryApplication struct {
-	logger *slog.Logger
-	repo   entry.Repository
+	logger      *slog.Logger
+	repo        entry.Repository
+	accountRepo account.Repository
 }
 
-func NewEntryApplication(logger *slog.Logger, repo entry.Repository) *EntryApplication {
+func NewEntryApplication(logger *slog.Logger, repo entry.Repository, accountRepo account.Repository) *EntryApplication {
 	return &EntryApplication{
-		logger: logger,
-		repo:   repo,
+		logger:      logger,
+		repo:        repo,
+		accountRepo: accountRepo,
 	}
 }
 
 func (a *EntryApplication) GetHistoryList(ctx context.Context, filter *entry.Filter, req *GetHistoryListRequest) ([]*GetListResponse, int64, error) {
+	if _, err := auth.LoadOwnedAccount(ctx, a.accountRepo, req.AccountID); err != nil {
+		a.logger.Error("failed to get history list", "error", err)
+		return nil, 0, err
+	}
+
 	entries, count, err := a.repo.GetList(ctx, filter, req.AccountID)
 	if err != nil {
 		a.logger.Error("failed to get history list", "error", err)

@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"ledger/internal/adapter/errors"
+	"ledger/internal/auth"
 	"ledger/internal/domain/account"
 
 	"log/slog"
@@ -43,7 +44,7 @@ func (a *AccountApplication) CreateAccount(ctx context.Context, req CreateAccoun
 func (a *AccountApplication) GetByID(ctx context.Context, req GetByIDRequest) (*GetByIDResponse, error) {
 	a.logger.Info("AccountApplication.GetByID", "id", req.ID)
 
-	account, err := a.repo.GetByID(ctx, req.ID)
+	account, err := auth.LoadOwnedAccount(ctx, a.repo, req.ID)
 	if err != nil {
 		a.logger.Error("failed to get account by id", "error", err)
 		return nil, err

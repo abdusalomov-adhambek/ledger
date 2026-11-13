@@ -12,6 +12,7 @@ import (
 	accountrepo "ledger/internal/adapter/postgres/account"
 	entryrepo "ledger/internal/adapter/postgres/entry"
 	transactionrepo "ledger/internal/adapter/postgres/transaction"
+	"ledger/internal/auth"
 	"ledger/internal/db"
 	"ledger/internal/domain/transaction"
 
@@ -23,6 +24,7 @@ type fixture struct {
 	pool          *pgxpool.Pool
 	app           *TransactionApplication
 	fromID, toID  string
+	ownerID       string
 	transactionID string
 }
 
@@ -68,6 +70,10 @@ func newFixture(t *testing.T, fromBalance, toBalance, amount int64) *fixture {
 		}
 	}
 
+	if err := pool.QueryRow(ctx, `SELECT owner_id FROM accounts WHERE id = $1`, f.fromID).Scan(&f.ownerID); err != nil {
+		t.Fatalf("read owner: %v", err)
+	}
+
 	t.Cleanup(func() {
 		ctx := context.Background()
 		pool.Exec(ctx, `DELETE FROM entries WHERE account_id IN ($1, $2)`, f.fromID, f.toID)
@@ -85,6 +91,11 @@ func newFixture(t *testing.T, fromBalance, toBalance, amount int64) *fixture {
 	)
 
 	return f
+}
+
+// ctx is a context for the owner of the debited account, who is allowed to reverse.
+func (f *fixture) ctx() context.Context {
+	return auth.WithSubject(context.Background(), f.ownerID)
 }
 
 func (f *fixture) balances(t *testing.T) (from, to int64) {
@@ -134,7 +145,7 @@ func (f *fixture) assertOneReversal(t *testing.T) {
 
 func TestReverseTransactionTwiceIsRejected(t *testing.T) {
 	f := newFixture(t, 50, 150, 50)
-	ctx := context.Background()
+	ctx := f.ctx()
 	req := &ReverseTransactionRequest{TransactionID: f.transactionID}
 
 	if err := f.app.ReverseTransaction(ctx, req); err != nil {
@@ -167,7 +178,7 @@ func TestReverseTransactionConcurrentOnlyOneSucceeds(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs[i] = f.app.ReverseTransaction(context.Background(), req)
+			errs[i] = f.app.ReverseTransaction(f.ctx(), req)
 		}()
 	}
 	wg.Wait()
@@ -201,7 +212,7 @@ func TestReverseTransactionWithoutEntries(t *testing.T) {
 		t.Fatalf("generate id: %v", err)
 	}
 
-	err := f.app.ReverseTransaction(context.Background(), &ReverseTransactionRequest{TransactionID: missingID})
+	err := f.app.ReverseTransaction(f.ctx(), &ReverseTransactionRequest{TransactionID: missingID})
 	if !errors.Is(err, transaction.ErrNoEntriesFound) {
 		t.Fatalf("error = %v, want ErrNoEntriesFound", err)
 	}
@@ -211,7 +222,7 @@ func TestReverseTransactionInsufficientFundsRollsBack(t *testing.T) {
 	// the destination spent part of the amount, so it cannot give it back
 	f := newFixture(t, 50, 10, 50)
 
-	err := f.app.ReverseTransaction(context.Background(), &ReverseTransactionRequest{TransactionID: f.transactionID})
+	err := f.app.ReverseTransaction(f.ctx(), &ReverseTransactionRequest{TransactionID: f.transactionID})
 	if err == nil {
 		t.Fatal("reverse succeeded, want insufficient balance error")
 	}
@@ -225,7 +236,7 @@ func TestReverseTransactionInsufficientFundsRollsBack(t *testing.T) {
 
 func TestReverseTransactionReversalIsNotReversible(t *testing.T) {
 	f := newFixture(t, 50, 150, 50)
-	ctx := context.Background()
+	ctx := f.ctx()
 
 	if err := f.app.ReverseTransaction(ctx, &ReverseTransactionRequest{TransactionID: f.transactionID}); err != nil {
 		t.Fatalf("reverse: %v", err)
@@ -236,7 +247,13 @@ func TestReverseTransactionReversalIsNotReversible(t *testing.T) {
 		t.Fatalf("find reversal: %v", err)
 	}
 
-	err := f.app.ReverseTransaction(ctx, &ReverseTransactionRequest{TransactionID: reversalID})
+	// the reversal debits the destination account, so its owner is the one allowed to reverse it
+	var toOwnerID string
+	if err := f.pool.QueryRow(ctx, `SELECT owner_id FROM accounts WHERE id = $1`, f.toID).Scan(&toOwnerID); err != nil {
+		t.Fatalf("read owner: %v", err)
+	}
+
+	err := f.app.ReverseTransaction(auth.WithSubject(ctx, toOwnerID), &ReverseTransactionRequest{TransactionID: reversalID})
 	if !errors.Is(err, transaction.ErrAlreadyReversed) {
 		t.Fatalf("reversing a reversal error = %v, want ErrAlreadyReversed", err)
 	}

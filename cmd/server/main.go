@@ -10,6 +10,7 @@ import (
 	"ledger/internal/adapter/postgres/idempotency"
 	"ledger/internal/adapter/postgres/outbox_events"
 	"ledger/internal/adapter/postgres/transaction"
+	"ledger/internal/auth"
 	"ledger/internal/config"
 	"ledger/internal/db"
 	"ledger/internal/logger"
@@ -82,7 +83,7 @@ func run() error {
 	// applications
 	accountApp := accountapplication.NewAccountApplication(accountRepo, logger)
 	transferApp := transferapplication.NewTransferApplication(logger, txManager, accountRepo, transactionRepo, entryRepo, idempotencyRepo, outboxEventRepo)
-	entryApp := entryapplication.NewEntryApplication(logger, entryRepo)
+	entryApp := entryapplication.NewEntryApplication(logger, entryRepo, accountRepo)
 	transactionApp := transactionapplication.NewTransactionApplication(logger, transactionRepo, entryRepo, txManager, accountRepo)
 
 	// outbox events worker
@@ -113,7 +114,12 @@ func run() error {
 	}
 
 	// --------------------------- gRPC server ---------------------------
-	grpcServer := grpc.NewServer()
+	authInterceptor, err := auth.UnaryInterceptor([]byte(cfg.Auth.JWTSecret))
+	if err != nil {
+		return err
+	}
+
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(authInterceptor))
 
 	ledgerGrpcService := ledgergrpc.NewLedgerGRPCService(
 		accountApp,
