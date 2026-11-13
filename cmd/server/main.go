@@ -87,7 +87,7 @@ func run() error {
 
 	// outbox events worker
 	worker := worker.NewOutboxWorker(outboxEventRepo, logger, kafkaProducer)
-	logger.Info("outbox worker started", worker)
+	logger.Info("outbox worker started", "worker", worker)
 
 	//  --------------------------- gRPC gateway ---------------------------
 	gatewayMux := runtime.NewServeMux(

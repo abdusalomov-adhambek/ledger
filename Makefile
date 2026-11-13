@@ -1,5 +1,5 @@
 DB_URL=postgres://postgres:postgres@localhost:5433/ledger?sslmode=disable
-.PHONY: run build test lint proto format clean
+.PHONY: run build test test-integration lint proto format clean
 
 run:
 	go run ./cmd/server
@@ -37,3 +37,6 @@ migrate-down:
 
 migrate-status:
 	goose -dir migrations postgres "$(DB_URL)" status
+
+test-integration:
+	LEDGER_TEST_DATABASE_URL="$(DB_URL)" go test ./internal/application/transaction/ -race -v

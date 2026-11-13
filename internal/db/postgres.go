@@ -21,12 +21,12 @@ func New(cfg config.PostgresConfig, logger *slog.Logger) (*pgxpool.Pool, error) 
 
 	pool, err := pgxpool.New(ctx, postgresUrl)
 	if err != nil {
-		logger.Error("failed to connect to postgres", err)
+		logger.Error("failed to connect to postgres", "error", err)
 		return nil, err
 	}
 
 	if err := pool.Ping(ctx); err != nil {
-		logger.Error("failed to ping postgres", err)
+		logger.Error("failed to ping postgres", "error", err)
 		return nil, err
 	}
 

@@ -46,16 +46,47 @@ func (t *TransactionApplication) ReverseTransaction(ctx context.Context, req *Re
 
 	return t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
 
-		// get entries and accounts
-		fromAccount := &account.Account{}
-		toAccount := &account.Account{}
+		// Mark the original as reversed first: the row lock serializes concurrent
+		// reversals and fails when it was already reversed
+		if err := t.repo.Reverse(ctx, req.TransactionID, tx); err != nil {
+			t.logger.Error("failed to reverse transaction", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
+			return err
+		}
+
+		// get entries' account ids
+		var fromID, toID string
 		for _, entry := range entries {
 			switch entry.EntryType() {
 			case "DEBIT":
-				fromAccount = entry.Account()
+				fromID = entry.AccountID()
 			case "CREDIT":
-				toAccount = entry.Account()
+				toID = entry.AccountID()
 			}
+		}
+
+		smallID := fromID
+		largeID := toID
+
+		if smallID > largeID {
+			smallID, largeID = largeID, smallID
+		}
+
+		// lock accounts ordered by id and read their current balances
+		firstAccount, err := t.accountRepo.GetForUpdate(ctx, tx, smallID)
+		if err != nil {
+			t.logger.Error("failed to get account", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
+			return err
+		}
+
+		secondAccount, err := t.accountRepo.GetForUpdate(ctx, tx, largeID)
+		if err != nil {
+			t.logger.Error("failed to get account", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
+			return err
+		}
+
+		fromAccount, toAccount := firstAccount, secondAccount
+		if firstAccount.ID() != fromID {
+			fromAccount, toAccount = secondAccount, firstAccount
 		}
 
 		//deposit amount back to fromAccount
@@ -95,15 +126,9 @@ func (t *TransactionApplication) ReverseTransaction(ctx context.Context, req *Re
 			return err
 		}
 
-		// Update original transaction status to reversed
-		if err := t.repo.Reverse(ctx, req.TransactionID, tx); err != nil {
-			t.logger.Error("failed to reverse transaction", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
-			return err
-		}
-
-		// Create new entries for reversed transaction
-		debit := entry.NewEntry("", newTransaction.ID(), fromAccount.ID(), entry.EntryTypeDebit, entries[0].Amount())
-		credit := entry.NewEntry("", newTransaction.ID(), toAccount.ID(), entry.EntryTypeCredit, entries[0].Amount())
+		// Create new entries for reversed transaction: toAccount pays the refund, fromAccount receives it
+		debit := entry.NewEntry("", newTransaction.ID(), toAccount.ID(), entry.EntryTypeDebit, entries[0].Amount())
+		credit := entry.NewEntry("", newTransaction.ID(), fromAccount.ID(), entry.EntryTypeCredit, entries[0].Amount())
 
 		// Create new debit entry
 		if err := t.entryRepo.Create(ctx, tx, debit); err != nil {
