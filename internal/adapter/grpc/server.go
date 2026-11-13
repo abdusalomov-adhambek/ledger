@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	ledgerv1 "ledger/api/proto"
 	"ledger/internal/application/account"
 	"ledger/internal/application/entry"
@@ -11,8 +12,23 @@ import (
 
 	entryDomain "ledger/internal/domain/entry"
 
+	apperrors "ledger/internal/adapter/errors"
+
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
+
+// toStatus maps the ownership errors to gRPC codes and passes any other error through.
+func toStatus(err error) error {
+	switch {
+	case errors.Is(err, apperrors.ErrUnauthenticated):
+		return status.Error(codes.Unauthenticated, err.Error())
+	case errors.Is(err, apperrors.ErrForbidden):
+		return status.Error(codes.PermissionDenied, err.Error())
+	}
+	return err
+}
 
 type LedgerService struct {
 	ledgerv1.UnimplementedLedgerServiceServer
@@ -56,7 +72,7 @@ func (s *LedgerService) GetAccount(ctx context.Context, req *ledgerv1.GetAccount
 		ID: req.Id,
 	})
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 
 	return &ledgerv1.GetAccountResponse{
@@ -87,7 +103,7 @@ func (s *LedgerService) Transfer(ctx context.Context, req *ledgerv1.TransferRequ
 		IdempotencyKey: idempotencyKey,
 	})
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 
 	return &ledgerv1.TransferResponse{
@@ -104,7 +120,7 @@ func (s *LedgerService) GetEntryHistory(ctx context.Context, req *ledgerv1.GetEn
 		AccountID: req.AccountId,
 	})
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 
 	var data []*ledgerv1.GentryHistory
@@ -130,7 +146,7 @@ func (s *LedgerService) ReverseTransfer(ctx context.Context, req *ledgerv1.Rever
 	if err := s.transactionApp.ReverseTransaction(ctx, &transaction.ReverseTransactionRequest{
 		TransactionID: req.TransactionId,
 	}); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 
 	return &ledgerv1.ReverseTransferResponse{

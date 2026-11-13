@@ -3,6 +3,8 @@ package transfer
 import (
 	"context"
 	"encoding/json"
+	apperrors "ledger/internal/adapter/errors"
+	"ledger/internal/auth"
 	"ledger/internal/db"
 	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
@@ -49,6 +51,13 @@ func NewTransferApplication(
 
 func (t *TransferApp) Transfer(ctx context.Context, req *TransferRequest) (string, error) {
 	var transactionID string
+
+	// only the owner of the from account may move its money
+	if _, err := auth.LoadOwnedAccount(ctx, t.accountRepo, req.FromAccountID); err != nil {
+		t.logger.Error("failed to get from account", "error", err)
+		return "", err
+	}
+
 	if req.Amount <= 0 {
 		return "", transfer.ErrInvalidAmount
 	}
@@ -59,6 +68,11 @@ func (t *TransferApp) Transfer(ctx context.Context, req *TransferRequest) (strin
 
 	newIdempotency := idempotency.NewIdempotency(req.IdempotencyKey, "", nil)
 	if err := t.idempotencyRepo.GetByTransactionId(ctx, newIdempotency); err == nil {
+		// the key may belong to a transfer from another account
+		if err := t.requireDebitFrom(ctx, newIdempotency.TransactionID(), req.FromAccountID); err != nil {
+			return "", err
+		}
+
 		return newIdempotency.TransactionID(), nil
 	}
 
@@ -199,4 +213,21 @@ func (t *TransferApp) Transfer(ctx context.Context, req *TransferRequest) (strin
 	}
 
 	return transactionID, nil
+}
+
+// requireDebitFrom fails with ErrForbidden unless the transaction debited fromAccountID.
+func (t *TransferApp) requireDebitFrom(ctx context.Context, transactionID, fromAccountID string) error {
+	entries, err := t.entryRepo.GetEntriesByTransactionID(ctx, transactionID)
+	if err != nil {
+		t.logger.Error("failed to get entries by transaction id", "transaction_id", transactionID, "error", err)
+		return err
+	}
+
+	for _, e := range entries {
+		if e.EntryType() == entry.EntryTypeDebit && e.AccountID() == fromAccountID {
+			return nil
+		}
+	}
+
+	return apperrors.ErrForbidden
 }

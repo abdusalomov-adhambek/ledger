@@ -8,6 +8,7 @@ type Config struct {
 	Logger   LoggerConfig   `env:"LOGGER"`
 	Kafka    KafkaConfig    `env:"KAFKA"`
 	GRPC     GRPCConfig     `env:"GRPC"`
+	Auth     AuthConfig     `env:"AUTH"`
 }
 
 type PostgresConfig struct {
@@ -30,4 +31,8 @@ type KafkaConfig struct {
 
 type GRPCConfig struct {
 	LedgerPort string `env:"GRPC_LEDGER_PORT"`
+}
+
+type AuthConfig struct {
+	JWTSecret string `env:"AUTH_JWT_SECRET,required,notEmpty"`
 }

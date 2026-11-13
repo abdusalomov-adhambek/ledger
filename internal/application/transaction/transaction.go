@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"context"
+	"ledger/internal/auth"
 	"ledger/internal/db"
 	"ledger/internal/domain/account"
 	"ledger/internal/domain/entry"
@@ -42,6 +43,21 @@ func (t *TransactionApplication) ReverseTransaction(ctx context.Context, req *Re
 	// check if entries are found
 	if len(entries) == 0 {
 		return transaction.ErrNoEntriesFound
+	}
+
+	// only the owner of the debited account may reverse the transaction
+	debitedID := ""
+	for _, entry := range entries {
+		if entry.EntryType() == "DEBIT" {
+			debitedID = entry.AccountID()
+		}
+	}
+	if debitedID == "" {
+		return transaction.ErrNoEntriesFound
+	}
+	if _, err := auth.LoadOwnedAccount(ctx, t.accountRepo, debitedID); err != nil {
+		t.logger.Error("failed to get debited account", "transactionApplication.ReverseTransaction", req.TransactionID, "error", err)
+		return err
 	}
 
 	return t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
